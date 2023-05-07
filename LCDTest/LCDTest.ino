@@ -25,13 +25,6 @@ volatile unsigned char* my_ADCSRA = (unsigned char*) 0x7A;
 volatile unsigned int* my_ADC_DATA = (unsigned int*) 0x78;
 
 
-
-////stepMotor Buttons
-//volatile unsigned char* port_a  = (unsigned char*) 0x22; 
-//volatile unsigned char* ddr_a  = (unsigned char*) 0x21; 
-//volatile unsigned char* pin_a  = (unsigned char*) 0x20; 
-
-
 int Pval = 0;
 
 int potentiometerVal = 0;
@@ -42,7 +35,7 @@ char printBuffer[128];
 
 LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
 
-Stepper stepMotor(STEPS, 3, 5, 4, 6);
+Stepper stepMotor(STEPS, 22, 24, 23, 25);
 
 
 // for DHT11,
