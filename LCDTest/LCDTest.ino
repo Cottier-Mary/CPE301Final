@@ -74,6 +74,7 @@ void loop() {
   // read without samples.
   byte temperature = 0;
   byte humidity = 0;
+  
   int err = SimpleDHTErrSuccess;
   if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
     Serial.print("Read DHT11 failed, err="); Serial.print(SimpleDHTErrCode(err));
@@ -92,16 +93,17 @@ void loop() {
   lcd.print((int)temperature); lcd.print(" C*, ");
   lcd.print((int)humidity); lcd.print("% H");
 
-    
+  
+  //calculate potentiometerVal 
   potentiometerVal = map(adc_read(0),0,1024,0,500);
   if( potentiometerVal != Pval ){
     
-    if (potentiometerVal>Pval){
+    if (potentiometerVal > Pval){
         stepMotor.step(20);
           Serial.println(Pval); //for debugging
       }
     
-    if (potentiometerVal<Pval){
+    if (potentiometerVal < Pval){
       
       stepMotor.step(-20);
         Serial.println(Pval); //for debugging
@@ -110,7 +112,7 @@ void loop() {
     Pval = potentiometerVal;
   }
   
-
+  
   Serial.println(Pval); //for debugging
   // DHT11 sampling rate is 1HZ.
   //delay(1500);
@@ -132,6 +134,7 @@ void adc_init(){
   *my_ADMUX  &= 0b11011111; // clear bit 5 to 0 for right adjust result
   *my_ADMUX  &= 0b11100000; // clear bit 4-0 to 0 to reset the channel and gain bits
 }
+
 unsigned int adc_read(unsigned char adc_channel_num){
   // clear the channel selection bits (MUX 4:0)
   *my_ADMUX  &= 0b11100000;
