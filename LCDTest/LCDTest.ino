@@ -24,6 +24,11 @@ volatile unsigned char* my_ADCSRB = (unsigned char*) 0x7B;
 volatile unsigned char* my_ADCSRA = (unsigned char*) 0x7A;
 volatile unsigned int* my_ADC_DATA = (unsigned int*) 0x78;
 
+//dc motor
+const int Enable12 = 5;  // PWM pin to L293D's EN12 (pin 1) 
+const int Driver1A = 4;  // To L293D's 1A (pin 2)
+const int Driver2A = 3;  // To L293D's 2A (pin 7)
+
 
 int Pval = 0;
 
@@ -42,6 +47,7 @@ Stepper stepMotor(STEPS, 22, 24, 23, 25);
 //      VCC: 5V or 3V
 //      GND: GND
 //      DATA: 2
+
 int pinDHT11 = 2;
 SimpleDHT11 dht11(pinDHT11);
 
@@ -55,25 +61,53 @@ void setup() {
   adc_init();
 
   stepMotor.setSpeed(300);
+
+      //---set pin direction for DC motor/fan
+  pinMode(Enable12,OUTPUT);
+  pinMode(Driver1A,OUTPUT);
+  pinMode(Driver2A,OUTPUT);
+ 
   
 }
 
 void loop() {
   
+ //     adc_init();
+    int waterLevel = adc_read(8); 
+    //Serial.println(var);
+
+    //testing motor
+      if (waterLevel > 200){
+          motorCTRL(255, HIGH, LOW);
+
+        }
+        
+  //if water level changes -> print
+    if(((HistoryValue>= waterLevel ) && ((HistoryValue - waterLevel) > 10)) || ((HistoryValue<waterLevel) && ((waterLevel - HistoryValue) > 10))){
+      sprintf(printBuffer,"ADC%d level is %d\n",adc_id, waterLevel);
+      Serial.print(printBuffer);
+      HistoryValue = waterLevel;
+
+    }
   
 //adc_init();
-  
+  //start fan (using pinmode rn)
+  //motorCTRL(255, HIGH, LOW);
+
+  //temperature and humidity for lcd
   // start working...
   Serial.println("=================================");
   Serial.println("Sample DHT11...");
 
+
   lcd.setCursor(0, 1);
   //  lcd.print(millis()/1000);
 
-
+  
   // read without samples.
   byte temperature = 0;
   byte humidity = 0;
+  
   int err = SimpleDHTErrSuccess;
   if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
     Serial.print("Read DHT11 failed, err="); Serial.print(SimpleDHTErrCode(err));
@@ -89,19 +123,21 @@ void loop() {
   Serial.print((int)temperature); Serial.print(" *C, ");
   Serial.print((int)humidity); Serial.println(" H");
 
+
   lcd.print((int)temperature); lcd.print(" C*, ");
   lcd.print((int)humidity); lcd.print("% H");
 
-    
+  
+  //calculate potentiometerVal 
   potentiometerVal = map(adc_read(0),0,1024,0,500);
   if( potentiometerVal != Pval ){
     
-    if (potentiometerVal>Pval){
+    if (potentiometerVal > Pval){
         stepMotor.step(20);
           Serial.println(Pval); //for debugging
       }
     
-    if (potentiometerVal<Pval){
+    if (potentiometerVal < Pval){
       
       stepMotor.step(-20);
         Serial.println(Pval); //for debugging
@@ -110,7 +146,7 @@ void loop() {
     Pval = potentiometerVal;
   }
   
-
+  
   Serial.println(Pval); //for debugging
   // DHT11 sampling rate is 1HZ.
   //delay(1500);
@@ -132,6 +168,7 @@ void adc_init(){
   *my_ADMUX  &= 0b11011111; // clear bit 5 to 0 for right adjust result
   *my_ADMUX  &= 0b11100000; // clear bit 4-0 to 0 to reset the channel and gain bits
 }
+
 unsigned int adc_read(unsigned char adc_channel_num){
   // clear the channel selection bits (MUX 4:0)
   *my_ADMUX  &= 0b11100000;
@@ -174,4 +211,18 @@ unsigned char U0getchar(){
 void U0putchar(unsigned char U0pdata){
   while((*myUCSR0A & TBE)==0);
   *myUDR0 = U0pdata;
+}
+
+//motorCTRL(255, HIGH, LOW);
+void motorCTRL(byte speed, bool D1A, bool D2A){
+    /*  motorCTRL controls the DC motor
+     *    speed: any value between 0-255, used as PWM
+     *             0 - off
+     *           255 - maximum
+     *      D1A: Input 1 or 1A, boolean value of HIGH or LOW          
+     *      D2A: Input 2 or 2A, boolean value of HIGH or LOW
+     */
+  analogWrite(Enable12,speed);  // PWM
+  digitalWrite(Driver1A,D1A);   // Boolean
+  digitalWrite(Driver2A,D2A);   // Boolean 
 }
