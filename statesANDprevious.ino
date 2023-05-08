@@ -83,6 +83,8 @@ void loop() {
   {
     //not disabled
     *port_b |= 0b00000011; //enables sensors
+   
+   //fix these two - or put function
     int check = DHT.read11(DHT11_PIN); // read humid/temp
     watervalue = adc_read(waterPin); // read the analog value from sensor
   }  
