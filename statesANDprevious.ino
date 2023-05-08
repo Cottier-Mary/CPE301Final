@@ -28,6 +28,24 @@ const int Enable12 = 5;  // PWM pin to L293D's EN12 (pin 1)
 const int Driver1A = 4;  // To L293D's 1A (pin 2)
 const int Driver2A = 3;  // To L293D's 2A (pin 7)
 
+volatile unsigned char *port_b = (unsigned char *)0x25;
+volatile unsigned char *ddr_b = (unsigned char *)0x24;
+volatile unsigned char *pin_b = (unsigned char *)0x23;
+volatile unsigned char *port_c = (unsigned char *)0x28;
+volatile unsigned char *ddr_c = (unsigned char *)0x27;
+volatile unsigned char *pin_c = (unsigned char *)0x26;
+volatile unsigned char *port_d = (unsigned char *)0x2B;
+volatile unsigned char *ddr_d = (unsigned char *)0x2A;
+volatile unsigned char *pin_d = (unsigned char *)0x29;
+volatile unsigned char *port_j = (unsigned char *)0x105;
+volatile unsigned char *ddr_j = (unsigned char *)0x104;
+volatile unsigned char *pin_j = (unsigned char *)0x103;
+volatile unsigned char *port_h = (unsigned char *)0x102;
+volatile unsigned char *ddr_h = (unsigned char *)0x101;
+volatile unsigned char *pin_h = (unsigned char *)0x100;
+volatile unsigned char *port_l = (unsigned char *)0x10B;
+volatile unsigned char *ddr_l = (unsigned char *)0x10A;
+volatile unsigned char *pin_l = (unsigned char *)0x109;
 
 int Pval = 0;
 
@@ -83,10 +101,9 @@ void loop() {
   {
     //not disabled
     *port_b |= 0b00000011; //enables sensors
-   
-   //fix these two - or put function
-    int check = DHT.read11(DHT11_PIN); // read humid/temp
-    watervalue = adc_read(waterPin); // read the analog value from sensor
+
+    //function here of humidity and water
+
   }  
   
   //state switches
