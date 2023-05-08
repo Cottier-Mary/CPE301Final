@@ -1,4 +1,3 @@
-
 #include <SimpleDHT.h>
 #include <LiquidCrystal.h>
 #include <Stepper.h> // Include the header file
@@ -29,6 +28,25 @@ const int Enable12 = 5;  // PWM pin to L293D's EN12 (pin 1)
 const int Driver1A = 4;  // To L293D's 1A (pin 2)
 const int Driver2A = 3;  // To L293D's 2A (pin 7)
 
+volatile unsigned char *port_b = (unsigned char *)0x25;
+volatile unsigned char *ddr_b = (unsigned char *)0x24;
+volatile unsigned char *pin_b = (unsigned char *)0x23;
+volatile unsigned char *port_c = (unsigned char *)0x28;
+volatile unsigned char *ddr_c = (unsigned char *)0x27;
+volatile unsigned char *pin_c = (unsigned char *)0x26;
+volatile unsigned char *port_d = (unsigned char *)0x2B;
+volatile unsigned char *ddr_d = (unsigned char *)0x2A;
+volatile unsigned char *pin_d = (unsigned char *)0x29;
+volatile unsigned char *port_j = (unsigned char *)0x105;
+volatile unsigned char *ddr_j = (unsigned char *)0x104;
+volatile unsigned char *pin_j = (unsigned char *)0x103;
+volatile unsigned char *port_h = (unsigned char *)0x102;
+volatile unsigned char *ddr_h = (unsigned char *)0x101;
+volatile unsigned char *pin_h = (unsigned char *)0x100;
+volatile unsigned char *port_l = (unsigned char *)0x10B;
+volatile unsigned char *ddr_l = (unsigned char *)0x10A;
+volatile unsigned char *pin_l = (unsigned char *)0x109;
+
 
 int Pval = 0;
 
@@ -51,6 +69,10 @@ Stepper stepMotor(STEPS, 22, 24, 23, 25);
 int pinDHT11 = 2;
 SimpleDHT11 dht11(pinDHT11);
 
+//states and interrupts
+volatile int state = 0; //starting disabled
+volatile int previousState = 0;
+
 void setup() {
   lcd.begin(16, 2);
   //lcd.print("hello world");
@@ -66,21 +88,161 @@ void setup() {
   pinMode(Enable12,OUTPUT);
   pinMode(Driver1A,OUTPUT);
   pinMode(Driver2A,OUTPUT);
- 
+  
+  *port_l &= 0b11110000; // set leds to be off by default
+  *port_l |= 0b00000001; // set except yellow :)
   
 }
 
 void loop() {
+  //when not in error - constantly running
+  if (state != 3) {
+    
+    potentiometerVal = map(adc_read(0),0,1024,0,500);
+    if( potentiometerVal != Pval ){
+      
+      if (potentiometerVal > Pval){
+          stepMotor.step(20);
+            Serial.println(Pval); //for debugging
+        }
+      
+      if (potentiometerVal < Pval){
+        
+        stepMotor.step(-20);
+          Serial.println(Pval); //for debugging
+        }
+     
+      Pval = potentiometerVal;
+    }
+    
+  }
+
+  if (state != 0)
+  {
+    //not disabled
+    *port_b |= 0b00000011; //enables sensors
+
+    //function here of humidity and water
+    //add if function to update every 60 seconds?
+    displayTempHumidity();
+  }  
+  
+  //state switches
+  switch (state)
+  {
+    case 0: //disabled
+      //machine off
+      if (previousState != 0) 
+      {
+
+        previousState = 0;
+        char printarray[23] = "Machine turned off at ";
+        
+        for (int i = 0; i < 23; i++)
+        {
+          U0putchar(printarray[i]);
+        }
+        //////printtime();
+        U0putchar('.');
+        U0putchar('\n');  
+
+        //turn on yellow LEDs and turn off others
+        //*port_b &= 0b11111100; //sensors off
+        *port_l &= 0b11110001; // set leds to be off by default
+        *port_l |= 0b00000001; // set except yellow :)
+  
+
+        lcd.setCursor(0, 0);
+        lcd.print("Machine is off. ");
+        lcd.setCursor(0, 1);
+        lcd.print("                ");
+      }
+      break;
+    case 1: //idle
+      if (previousState != 1)
+      {
+        previousState = 1;
+        char printarray[18] = "Machine idled at ";
+
+        for (int i = 0; i < 18; i++)
+        {
+          U0putchar(printarray[i]);
+        }
+        ////printtime();
+        U0putchar('.');
+        U0putchar('\n');
+
+        //turn on green led and turn off others
+        *port_l &= 0b11110010; //others off
+        *port_l |= 0b00000010; //green on
+        
+        //turn off fan
+      }
+      //call LCD function to display temp and humdity
+      break;
+    case 2: //running
+      //fan on + blue light
+      if (previousState != 2)
+      {
+        previousState = 2;
+        char printarray[20] = "Machine enabled at ";
+
+        for (int i = 0; i < 20; i++)
+        {
+          U0putchar(printarray[i]);
+        }
+        //printtime();
+        U0putchar('.');
+        U0putchar('\n');
+
+        //turn on fan
+        //turn on blue light and others off
+        *port_l &= 0b11110100; //others off
+         *port_l |= 0b00000100;//Blue on
+  
+      }
+
+      //call LCD function
+      break;
+    case 3: //error
+      if (previousState != 3)
+      {
+        previousState = 3;
+        char printarray[18] = "Machine error at ";
+        for (int i = 0; i < 18; i++)
+        {
+          U0putchar(printarray[i]);
+        }
+        //printtime();
+        U0putchar('.');
+        U0putchar('\n');
+
+        //turn off fan
+        //turn on red light and others off
+
+      *port_l &= 0b11111000; //others off    
+      *port_l |= 0b00001000; //red on
+      Serial.println("Red on");
+
+      }
+
+      lcd.setCursor(0, 0);
+      lcd.print("Water level low.");
+      lcd.setCursor(0, 1);
+      lcd.print("                ");
+      break;
+  }
+
   
  //     adc_init();
     int waterLevel = adc_read(8); 
     //Serial.println(var);
 
     //testing motor
-      if (waterLevel > 200){
-          motorCTRL(255, HIGH, LOW);
-
-        }
+//      if (waterLevel > 200){
+//          motorCTRL(255, HIGH, LOW);
+//
+//        }
         
   //if water level changes -> print
     if(((HistoryValue>= waterLevel ) && ((HistoryValue - waterLevel) > 10)) || ((HistoryValue<waterLevel) && ((waterLevel - HistoryValue) > 10))){
@@ -96,55 +258,55 @@ void loop() {
 
   //temperature and humidity for lcd
   // start working...
-  Serial.println("=================================");
-  Serial.println("Sample DHT11...");
-
-
-  lcd.setCursor(0, 1);
-  //  lcd.print(millis()/1000);
-
-  
-  // read without samples.
-  byte temperature = 0;
-  byte humidity = 0;
-  
-  int err = SimpleDHTErrSuccess;
-  if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
-    Serial.print("Read DHT11 failed, err="); Serial.print(SimpleDHTErrCode(err));
-    Serial.print(","); Serial.println(SimpleDHTErrDuration(err)); delay(1000);
-    //lcd.print("Read DHT11 failed, err="); lcd.print(SimpleDHTErrCode(err));
-    //Serial.print(","); Serial.println(SimpleDHTErrDuration(err)); delay(1000);
-
-    return;
-
-  }
-
-  Serial.print("Sample OK: ");
-  Serial.print((int)temperature); Serial.print(" *C, ");
-  Serial.print((int)humidity); Serial.println(" H");
-
-
-  lcd.print((int)temperature); lcd.print(" C*, ");
-  lcd.print((int)humidity); lcd.print("% H");
+//  Serial.println("=================================");
+//  Serial.println("Sample DHT11...");
+//
+//
+//  lcd.setCursor(0, 1);
+//  //  lcd.print(millis()/1000);
+//
+//  
+//  // read without samples.
+//  byte temperature = 0;
+//  byte humidity = 0;
+//  
+//  int err = SimpleDHTErrSuccess;
+//  if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
+//    Serial.print("Read DHT11 failed, err="); Serial.print(SimpleDHTErrCode(err));
+//    Serial.print(","); Serial.println(SimpleDHTErrDuration(err)); delay(1000);
+//    //lcd.print("Read DHT11 failed, err="); lcd.print(SimpleDHTErrCode(err));
+//    //Serial.print(","); Serial.println(SimpleDHTErrDuration(err)); delay(1000);
+//
+//    return;
+//
+//  }
+//
+//  Serial.print("Sample OK: ");
+//  Serial.print((int)temperature); Serial.print(" *C, ");
+//  Serial.print((int)humidity); Serial.println(" H");
+//
+//
+//  lcd.print((int)temperature); lcd.print(" C*, ");
+//  lcd.print((int)humidity); lcd.print("% H");
 
   
   //calculate potentiometerVal 
-  potentiometerVal = map(adc_read(0),0,1024,0,500);
-  if( potentiometerVal != Pval ){
-    
-    if (potentiometerVal > Pval){
-        stepMotor.step(20);
-          Serial.println(Pval); //for debugging
-      }
-    
-    if (potentiometerVal < Pval){
-      
-      stepMotor.step(-20);
-        Serial.println(Pval); //for debugging
-      }
-   
-    Pval = potentiometerVal;
-  }
+//  potentiometerVal = map(adc_read(0),0,1024,0,500);
+//  if( potentiometerVal != Pval ){
+//    
+//    if (potentiometerVal > Pval){
+//        stepMotor.step(20);
+//          Serial.println(Pval); //for debugging
+//      }
+//    
+//    if (potentiometerVal < Pval){
+//      
+//      stepMotor.step(-20);
+//        Serial.println(Pval); //for debugging
+//      }
+//   
+//    Pval = potentiometerVal;
+//  }
   
   
   Serial.println(Pval); //for debugging
@@ -226,3 +388,36 @@ void motorCTRL(byte speed, bool D1A, bool D2A){
   digitalWrite(Driver1A,D1A);   // Boolean
   digitalWrite(Driver2A,D2A);   // Boolean 
 }
+
+void displayTempHumidity(){
+    Serial.println("=================================");
+    Serial.println("Sample DHT11...");
+  
+  
+    lcd.setCursor(0, 1);
+    //  lcd.print(millis()/1000);
+  
+    
+    // read without samples.
+    byte temperature = 0;
+    byte humidity = 0;
+    
+    int err = SimpleDHTErrSuccess;
+    if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
+      Serial.print("Read DHT11 failed, err="); Serial.print(SimpleDHTErrCode(err));
+      Serial.print(","); Serial.println(SimpleDHTErrDuration(err)); delay(1000);
+      //lcd.print("Read DHT11 failed, err="); lcd.print(SimpleDHTErrCode(err));
+      //Serial.print(","); Serial.println(SimpleDHTErrDuration(err)); delay(1000);
+  
+      return;
+  
+    }
+  
+    Serial.print("Sample OK: ");
+    Serial.print((int)temperature); Serial.print(" *C, ");
+    Serial.print((int)humidity); Serial.println(" H");
+  
+  
+    lcd.print((int)temperature); lcd.print(" C*, ");
+    lcd.print((int)humidity); lcd.print("% H");
+  }
