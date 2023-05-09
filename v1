@@ -148,18 +148,15 @@ void loop(){
   *mySREG |= 0b10000000;  // turn on global interrupt
   
   //when states happen
-  if (waterLevel < 50 && state != 0 && state != 3) // water level low, not disabeled, not in error
-  {
+  if(waterLevel < 50 && state != 0 && state != 3){// water level low, not disabeled, not in error
     state = 3;
   }
 
-  if (temperature >= 23 && state == 1) // if temp is high and state is idle
-  {
+  if(temperature >= 23 && state == 1){// if temp is high and state is idle
     state = 2; // set state to enabled
   }
 
-  if (temperature < 23 && state == 2) // if temp is low and state is enabled
-  {
+  if(temperature < 23 && state == 2){// if temp is low and state is enabled
     state = 1; // set state to idle
   }
   
@@ -252,6 +249,10 @@ void loop(){
   *mySREG &= 0b01111111; // turn off global interrupt
   delay(100);
   *mySREG |= 0b10000000;  // turn on global interrupt
+ 
+//adc_init();
+    int waterLevel = adc_read(8); 
+    //Serial.println(var);
 
     //testing motor
 //      if (waterLevel > 200){
