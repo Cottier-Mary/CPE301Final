@@ -1,15 +1,12 @@
+//Include header files
 #include <SimpleDHT.h>
 #include <LiquidCrystal.h>
-#include <Stepper.h> // Include the header file
-
-
+#include <Stepper.h> 
 
 //steps per revolution
 #define STEPS 32
-
-
 #define RDA 0x80
-#define TBE 0x20  
+#define TBE 0x20
 
 //Pointers for UART
 volatile unsigned char *myUCSR0A = (unsigned char *)0x00C0;
@@ -17,41 +14,39 @@ volatile unsigned char *myUCSR0B = (unsigned char *)0x00C1;
 volatile unsigned char *myUCSR0C = (unsigned char *)0x00C2;
 volatile unsigned int  *myUBRR0  = (unsigned int *) 0x00C4;
 volatile unsigned char *myUDR0   = (unsigned char *)0x00C6;
- //Pointers for ADC
-volatile unsigned char* my_ADMUX = (unsigned char*) 0x7C;
-volatile unsigned char* my_ADCSRB = (unsigned char*) 0x7B;
-volatile unsigned char* my_ADCSRA = (unsigned char*) 0x7A;
+
+//Pointers for ADC
+volatile unsigned char* my_ADMUX   = (unsigned char*) 0x7C;
+volatile unsigned char* my_ADCSRB  = (unsigned char*) 0x7B;
+volatile unsigned char* my_ADCSRA  = (unsigned char*) 0x7A;
 volatile unsigned int* my_ADC_DATA = (unsigned int*) 0x78;
 
 //dc motor
-const int Enable12 = 5;  // PWM pin to L293D's EN12 (pin 1) 
-const int Driver1A = 4;  // To L293D's 1A (pin 2)
-const int Driver2A = 3;  // To L293D's 2A (pin 7)
+const int Enable12 = 5;//PWM pin to L293D's EN12 (pin 1) 
+const int Driver1A = 4;//To L293D's 1A (pin 2)
+const int Driver2A = 3;//To L293D's 2A (pin 7)
 
+//push button code
 volatile unsigned char *port_b = (unsigned char *)0x25;
-volatile unsigned char *ddr_b = (unsigned char *)0x24;
-volatile unsigned char *pin_b = (unsigned char *)0x23;
-volatile unsigned char *port_c = (unsigned char *)0x28;
-volatile unsigned char *ddr_c = (unsigned char *)0x27;
-volatile unsigned char *pin_c = (unsigned char *)0x26;
-volatile unsigned char *port_d = (unsigned char *)0x2B;
-volatile unsigned char *ddr_d = (unsigned char *)0x2A;
-volatile unsigned char *pin_d = (unsigned char *)0x29;
-volatile unsigned char *port_j = (unsigned char *)0x105;
-volatile unsigned char *ddr_j = (unsigned char *)0x104;
-volatile unsigned char *pin_j = (unsigned char *)0x103;
-volatile unsigned char *port_h = (unsigned char *)0x102;
-volatile unsigned char *ddr_h = (unsigned char *)0x101;
-volatile unsigned char *pin_h = (unsigned char *)0x100;
-volatile unsigned char *port_l = (unsigned char *)0x10B;
-volatile unsigned char *ddr_l = (unsigned char *)0x10A;
-volatile unsigned char *pin_l = (unsigned char *)0x109;
+volatile unsigned char *ddr_b  = (unsigned char *)0x24;
+volatile unsigned char *pin_b  = (unsigned char *)0x23;
 
+//LED's
+volatile unsigned char *port_l = (unsigned char *)0x10B;
+volatile unsigned char *ddr_l  = (unsigned char *)0x10A;
+volatile unsigned char *pin_l  = (unsigned char *)0x109;
+
+//DC Fan motor
+volatile unsigned char* port_g = (unsigned char*) 0x34;
+volatile unsigned char* ddr_g  = (unsigned char*) 0x33;
+volatile unsigned char* pin_g  = (unsigned char*) 0x32;
+
+//Fan States
+#define fanOn 0x20
+#define fanOff 0x00
 
 int Pval = 0;
-
 int potentiometerVal = 0;
-
 int adc_id = 0;
 int HistoryValue = 0;
 char printBuffer[128];
@@ -59,7 +54,6 @@ char printBuffer[128];
 LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
 
 Stepper stepMotor(STEPS, 22, 24, 23, 25);
-
 
 // for DHT11,
 //      VCC: 5V or 3V
@@ -84,62 +78,52 @@ void setup() {
 
   stepMotor.setSpeed(300);
 
-      //---set pin direction for DC motor/fan
-  pinMode(Enable12,OUTPUT);
-  pinMode(Driver1A,OUTPUT);
-  pinMode(Driver2A,OUTPUT);
+  //set PB4 to INPUT
+  *ddr_b &= 0xEF;
+  // enable the pullup resistor on PB4
+  *port_b |= 0x06;
+
+  //---set pin direction for DC motor/fan
+  //pinMode(Enable12,OUTPUT);
+  //pinMode(Driver1A,OUTPUT);
+  //pinMode(Driver2A,OUTPUT);
   
   *port_l &= 0b11110000; // set leds to be off by default
   *port_l |= 0b00000001; // set except yellow :)
-  
 }
 
-void loop() {
+void loop(){
   //when not in error - constantly running
-  if (state != 3) {
-    
+  if(state != 3){
     potentiometerVal = map(adc_read(0),0,1024,0,500);
-    if( potentiometerVal != Pval ){
+    if(potentiometerVal != Pval){
       
-      if (potentiometerVal > Pval){
-          stepMotor.step(20);
-            Serial.println(Pval); //for debugging
-        }
-      
-      if (potentiometerVal < Pval){
-        
+      if(potentiometerVal > Pval){
+        stepMotor.step(20);
+        Serial.println(Pval);//for debugging
+      }
+      if(potentiometerVal < Pval){
         stepMotor.step(-20);
-          Serial.println(Pval); //for debugging
-        }
-     
+        Serial.println(Pval); //for debugging
+      }
       Pval = potentiometerVal;
     }
-    
   }
-
-  if (state != 0)
-  {
+  if(state != 0){
     //not disabled
-    *port_b |= 0b00000011; //enables sensors
-
+    *port_b |= 0b00000011;//enables sensors
     //function here of humidity and water
     //add if function to update every 60 seconds?
     displayTempHumidity();
   }  
-  
   //state switches
-  switch (state)
-  {
-    case 0: //disabled
+  switch(state){
+    case 0://disabled
       //machine off
-      if (previousState != 0) 
-      {
-
+      if(previousState != 0){
         previousState = 0;
         char printarray[23] = "Machine turned off at ";
-        
-        for (int i = 0; i < 23; i++)
-        {
+        for(int i = 0; i < 23; i++){
           U0putchar(printarray[i]);
         }
         //////printtime();
@@ -150,7 +134,6 @@ void loop() {
         //*port_b &= 0b11111100; //sensors off
         *port_l &= 0b11110001; // set leds to be off by default
         *port_l |= 0b00000001; // set except yellow :)
-  
 
         lcd.setCursor(0, 0);
         lcd.print("Machine is off. ");
@@ -158,14 +141,11 @@ void loop() {
         lcd.print("                ");
       }
       break;
-    case 1: //idle
-      if (previousState != 1)
-      {
+    case 1://idle
+      if(previousState != 1){
         previousState = 1;
         char printarray[18] = "Machine idled at ";
-
-        for (int i = 0; i < 18; i++)
-        {
+        for(int i = 0; i < 18; i++){
           U0putchar(printarray[i]);
         }
         ////printtime();
@@ -182,13 +162,10 @@ void loop() {
       break;
     case 2: //running
       //fan on + blue light
-      if (previousState != 2)
-      {
+      if(previousState != 2){
         previousState = 2;
         char printarray[20] = "Machine enabled at ";
-
-        for (int i = 0; i < 20; i++)
-        {
+        for(int i = 0; i < 20; i++){
           U0putchar(printarray[i]);
         }
         //printtime();
@@ -198,34 +175,28 @@ void loop() {
         //turn on fan
         //turn on blue light and others off
         *port_l &= 0b11110100; //others off
-         *port_l |= 0b00000100;//Blue on
+        *port_l |= 0b00000100;//Blue on
   
       }
 
       //call LCD function
       break;
     case 3: //error
-      if (previousState != 3)
-      {
+      if(previousState != 3){
         previousState = 3;
         char printarray[18] = "Machine error at ";
-        for (int i = 0; i < 18; i++)
-        {
+        for(int i = 0; i < 18; i++){
           U0putchar(printarray[i]);
         }
         //printtime();
         U0putchar('.');
         U0putchar('\n');
-
         //turn off fan
         //turn on red light and others off
-
-      *port_l &= 0b11111000; //others off    
-      *port_l |= 0b00001000; //red on
-      Serial.println("Red on");
-
+        *port_l &= 0b11111000; //others off    
+        *port_l |= 0b00001000; //red on
+        Serial.println("Red on");
       }
-
       lcd.setCursor(0, 0);
       lcd.print("Water level low.");
       lcd.setCursor(0, 1);
@@ -234,7 +205,7 @@ void loop() {
   }
 
   
- //     adc_init();
+ //adc_init();
     int waterLevel = adc_read(8); 
     //Serial.println(var);
 
@@ -245,13 +216,11 @@ void loop() {
 //        }
         
   //if water level changes -> print
-    if(((HistoryValue>= waterLevel ) && ((HistoryValue - waterLevel) > 10)) || ((HistoryValue<waterLevel) && ((waterLevel - HistoryValue) > 10))){
+    if(((HistoryValue>= waterLevel) && ((HistoryValue - waterLevel) > 10)) || ((HistoryValue<waterLevel) && ((waterLevel - HistoryValue) > 10))){
       sprintf(printBuffer,"ADC%d level is %d\n",adc_id, waterLevel);
       Serial.print(printBuffer);
       HistoryValue = waterLevel;
-
     }
-  
 //adc_init();
   //start fan (using pinmode rn)
   //motorCTRL(255, HIGH, LOW);
@@ -307,8 +276,6 @@ void loop() {
 //   
 //    Pval = potentiometerVal;
 //  }
-  
-  
   Serial.println(Pval); //for debugging
   // DHT11 sampling rate is 1HZ.
   //delay(1500);
@@ -353,7 +320,6 @@ unsigned int adc_read(unsigned char adc_channel_num){
   return *my_ADC_DATA;
 }
 
-
 void U0init(int U0baud){
  unsigned long FCPU = 16000000;
  unsigned int tbaud;
@@ -384,40 +350,30 @@ void motorCTRL(byte speed, bool D1A, bool D2A){
      *      D1A: Input 1 or 1A, boolean value of HIGH or LOW          
      *      D2A: Input 2 or 2A, boolean value of HIGH or LOW
      */
-  analogWrite(Enable12,speed);  // PWM
-  digitalWrite(Driver1A,D1A);   // Boolean
-  digitalWrite(Driver2A,D2A);   // Boolean 
+  analogWrite(Enable12,speed);// PWM
+  digitalWrite(Driver1A,D1A);// Boolean
+  digitalWrite(Driver2A,D2A);// Boolean 
 }
 
 void displayTempHumidity(){
     Serial.println("=================================");
     Serial.println("Sample DHT11...");
-  
-  
     lcd.setCursor(0, 1);
-    //  lcd.print(millis()/1000);
-  
-    
+    //lcd.print(millis()/1000);
     // read without samples.
     byte temperature = 0;
     byte humidity = 0;
-    
     int err = SimpleDHTErrSuccess;
-    if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess) {
+    if((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess){
       Serial.print("Read DHT11 failed, err="); Serial.print(SimpleDHTErrCode(err));
       Serial.print(","); Serial.println(SimpleDHTErrDuration(err)); delay(1000);
       //lcd.print("Read DHT11 failed, err="); lcd.print(SimpleDHTErrCode(err));
       //Serial.print(","); Serial.println(SimpleDHTErrDuration(err)); delay(1000);
-  
       return;
-  
     }
-  
     Serial.print("Sample OK: ");
     Serial.print((int)temperature); Serial.print(" *C, ");
     Serial.print((int)humidity); Serial.println(" H");
-  
-  
     lcd.print((int)temperature); lcd.print(" C*, ");
     lcd.print((int)humidity); lcd.print("% H");
   }
