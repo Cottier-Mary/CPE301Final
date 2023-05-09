@@ -2,6 +2,7 @@
 #include <SimpleDHT.h>
 #include <LiquidCrystal.h>
 #include <Stepper.h> 
+#include <RTClib.h>
 
 //steps per revolution
 #define STEPS 32
@@ -67,9 +68,19 @@ SimpleDHT11 dht11(pinDHT11);
 volatile int state = 0; //starting disabled
 volatile int previousState = 0;
 
+//interrupts
+volatile unsigned char *mySREG = (unsigned char *)0x5F;
+volatile unsigned char *myEICRA = (unsigned char *)0x69;
+volatile unsigned char *myEIMSK = (unsigned char *)0x3D;
+
+unsigned int waterLevel = 0;
+unsigned int temperature = 0;
+
+RTC_DS1307 rtc; //initialize RTC clock
+
 void setup() {
   lcd.begin(16, 2);
-  //lcd.print("hello world");
+  //lcd.print("hello world"); - test
   Serial.begin(9600);
   
   U0init(9600);
@@ -90,32 +101,70 @@ void setup() {
   
   *port_l &= 0b11110000; // set leds to be off by default
   *port_l |= 0b00000001; // set except yellow :)
+  
+   *myEICRA |= 0b10100000; // falling edge mode for interrupt 2/3
+  *myEICRA &= 0b10101111; // falling edge mode for interrupt 2/3
+  *myEIMSK |= 0b00001100; // turn on interrupt 2/3
+  *mySREG |= 0b10000000;  // turn on global interrupt
+  
+   lcd.print("Machine is off. ");
+
+  if(!rtc.begin()){ //check
+    char printarray[21] = "Unable to locate RTC";
+    for(int i = 0;i < 21;i++)
+    {
+      U0putchar(printarray[i]);
+    }
+  } 
 }
 
 void loop(){
   //when not in error - constantly running
+  waterLevel = adc_read(8);
+  
   if(state != 3){
     potentiometerVal = map(adc_read(0),0,1024,0,500);
     if(potentiometerVal != Pval){
       
       if(potentiometerVal > Pval){
         stepMotor.step(20);
-        Serial.println(Pval);//for debugging
+        //Serial.println(Pval);//for debugging
       }
       if(potentiometerVal < Pval){
         stepMotor.step(-20);
-        Serial.println(Pval); //for debugging
+        //Serial.println(Pval); //for debugging
       }
       Pval = potentiometerVal;
     }
   }
   if(state != 0){
     //not disabled
-    *port_b |= 0b00000011;//enables sensors
-    //function here of humidity and water
+    *port_b |= 0b00000011;//enables sensors **NEEDED??
     //add if function to update every 60 seconds?
     displayTempHumidity();
   }  
+  
+  //interrupts
+  *mySREG &= 0b01111111; // turn off global interrupt
+  delay(100);
+  *mySREG |= 0b10000000;  // turn on global interrupt
+  
+  //when states happen
+  if (waterLevel < 50 && state != 0 && state != 3) // water level low, not disabeled, not in error
+  {
+    state = 3;
+  }
+
+  if (temperature >= 23 && state == 1) // if temp is high and state is idle
+  {
+    state = 2; // set state to enabled
+  }
+
+  if (temperature < 23 && state == 2) // if temp is low and state is enabled
+  {
+    state = 1; // set state to idle
+  }
+  
   //state switches
   switch(state){
     case 0://disabled
@@ -126,7 +175,7 @@ void loop(){
         for(int i = 0; i < 23; i++){
           U0putchar(printarray[i]);
         }
-        //////printtime();
+        RTCtime();
         U0putchar('.');
         U0putchar('\n');  
 
@@ -148,7 +197,7 @@ void loop(){
         for(int i = 0; i < 18; i++){
           U0putchar(printarray[i]);
         }
-        ////printtime();
+        RTCtime();
         U0putchar('.');
         U0putchar('\n');
 
@@ -158,17 +207,16 @@ void loop(){
         
         //turn off fan
       }
-      //call LCD function to display temp and humdity
+      displayTempHumidity();
       break;
     case 2: //running
-      //fan on + blue light
       if(previousState != 2){
         previousState = 2;
         char printarray[20] = "Machine enabled at ";
         for(int i = 0; i < 20; i++){
           U0putchar(printarray[i]);
         }
-        //printtime();
+        RTCtime();
         U0putchar('.');
         U0putchar('\n');
 
@@ -178,8 +226,7 @@ void loop(){
         *port_l |= 0b00000100;//Blue on
   
       }
-
-      //call LCD function
+      displayTempHumidity();
       break;
     case 3: //error
       if(previousState != 3){
@@ -188,7 +235,7 @@ void loop(){
         for(int i = 0; i < 18; i++){
           U0putchar(printarray[i]);
         }
-        //printtime();
+        RTCtime();
         U0putchar('.');
         U0putchar('\n');
         //turn off fan
@@ -204,10 +251,9 @@ void loop(){
       break;
   }
 
-  
- //adc_init();
-    int waterLevel = adc_read(8); 
-    //Serial.println(var);
+  *mySREG &= 0b01111111; // turn off global interrupt
+  delay(100);
+  *mySREG |= 0b10000000;  // turn on global interrupt
 
     //testing motor
 //      if (waterLevel > 200){
@@ -221,6 +267,8 @@ void loop(){
       Serial.print(printBuffer);
       HistoryValue = waterLevel;
     }
+  
+  //what is this??
 //adc_init();
   //start fan (using pinmode rn)
   //motorCTRL(255, HIGH, LOW);
@@ -377,3 +425,42 @@ void displayTempHumidity(){
     lcd.print((int)temperature); lcd.print(" C*, ");
     lcd.print((int)humidity); lcd.print("% H");
   }
+
+void RTCtime(){
+  DateTime now = rtc.now();
+  int year = now.year();
+  int month = now.month();
+  int day = now.day();
+  int hour = now.hour();
+  int minute = now.minute();
+  int second = now.second();
+  char time[24] = {
+    'a',
+    't',
+    ' ',
+    hour / 10 + '0',
+    hour % 10 + '0',
+    ':',
+    minute / 10 + '0',
+    minute % 10 + '0',
+    ':',
+    second / 10 + '0',
+    second % 10 + '0',
+    'o',
+    'n',
+    month / 10 + '0',
+    month % 10 + '0',
+    '/',
+    day / 10 + '0',
+    day % 10 + '0',
+    '/',
+    (year / 1000) + '0',
+    (year % 1000 / 100) + '0',
+    (year % 100 / 10) + '0',
+    (year % 10) + '0',
+  };
+  for (int i = 0; i < 23; i++)
+  {
+    U0putchar(time[i]);
+  }
+}
