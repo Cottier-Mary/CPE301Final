@@ -64,8 +64,9 @@ bool reset_button = false;
 bool start_button = false;
 //bool stop = false
 
+int waterThreshold = 100;
 int tempThresholdRToI = 24; //running to idle
-int tempThresholdIToR = 22; //idle to running
+int tempThresholdIToR = 21; //idle to running
 
 int Pval = 0;
 int potentiometerVal = 0;
@@ -169,26 +170,38 @@ void loop(){
 
 
 
- *pin_c & 0b11011111;
+ //*pin_c & 0b11011111;
  // if the pin is high
-   if(!(*pin_c & 0b00100000))
+   if(!(*pin_c & 0b00100000) && state == 3)
  {
   
    Serial.println("RESET BUTTON WAS PRESSED");
    state = 1;
  }
 
- if(!(*pin_c & 0b00010000))
+ if(!(*pin_c & 0b00010000) )
  {
-  //add interrupt??
    Serial.println("START/STOP WAS PRESSED");
    start_button_presses++;
-   if(start_button_presses % 2 == 0){
-      start_button = false;
+   if((start_button_presses % 2 == 0) && (state != 0)){ //stop press
+      if(state == 2){
+        Serial.println("turn off fan");
+      }
+      state = 0;
+      //start_button_presses++;
     }
-   if (start_button_presses % 2 == 1){
-      start_button = true;
+    else if ((start_button_presses % 2 == 1) && (state == 0)){ // start press
+      state = 1;
+      //start_button_presses++;
+
     }
+    else{
+      start_button_presses--;
+    }
+  //interrupt
+  *mySREG &= 0b01111111; // turn off global interrupt
+  delay(100);
+  *mySREG |= 0b10000000;  // turn on global interrupt
  }
 
 
@@ -221,8 +234,8 @@ void loop(){
       Pval = potentiometerVal;
     }
   }
-  if(state != 0){
-    //not disabled
+  if(state == 1 || state == 2){
+    //not disabled or error
     displayTempHumidity(temperature, humidity);
   }  
   
@@ -232,18 +245,23 @@ void loop(){
   *mySREG |= 0b10000000;  // turn on global interrupt
   
   //when states happen
-  if(waterLevel < 50 && state != 0 && state != 3){// water level low, not disabeled, not in error
+  if(waterLevel < waterThreshold && state != 0 && state != 3){// water level low, not disabeled, not in error
+    if(state == 2){
+      Serial.println("turn off fan");
+    }
     state = 3;
   }
 
-  if((int)temperature > tempThresholdIToR && state == 1){// if temp is high and state is idle
+  if(((int)temperature > (int)tempThresholdIToR )&& (state == 1)){// if temp is high and state is idle
     state = 2; // set state to enabled
   }
 
-  if((start_button == true && state == 0) || (reset_button == true && state == 3) || (temperature <= tempThresholdRToI && state == 2)){// if temp is low and state is enabled
-    state = 1; // set state to idle
-    reset_button = false;
+  if((int)temperature <= tempThresholdRToI && state == 2){
+    Serial.println("turn off fan");
+    state = 1;
   }
+
+//  if()
   
   //state switches
   switch(state){
@@ -265,6 +283,7 @@ void loop(){
         *port_l |= 0b00000001; // set except yellow :)
   
         lcd.setCursor(0, 0);
+        lcd.begin(16,2);
         lcd.print("Machine is off. ");
         lcd.setCursor(0, 1);
         //lcd.print("                ");
@@ -284,10 +303,9 @@ void loop(){
         //turn on green led and turn off others
         *port_l &= 0b11110010; //others off
         *port_l |= 0b00000010; //green on
-        
+        //Serial.println("turn fan on");
         //turn off fan
       }
-      displayTempHumidity(temperature, humidity);
       break;
     case 2: //running
       if(previousState != 2){
@@ -300,13 +318,12 @@ void loop(){
         U0putchar('.');
         U0putchar('\n');
 
-        //turn on fan
+        Serial.println("turn on fan");
         //turn on blue light and others off
         *port_l &= 0b11110100; //others off
         *port_l |= 0b00000100;//Blue on
           
       }
-      displayTempHumidity(temperature, humidity);
       break;
     case 3: //error
       if(previousState != 3){
@@ -328,8 +345,10 @@ void loop(){
       lcd.print("Water level low.");
       lcd.setCursor(0, 1);
       lcd.print("                ");
-      delay(2000);
-      state = 0; //displays to lcd & turns on red led, delays then stops and goes to disabled
+      
+      //press stop button to exit error
+      //delay(2000);
+      //state = 0; //displays to lcd & turns on red led, delays then stops and goes to disabled
       break;
   }
 
@@ -490,6 +509,7 @@ void motorCTRL(byte speed, bool D1A, bool D2A){
 }
 
 void displayTempHumidity(byte temperature, byte humidity){
+    lcd.begin(16,2);
     Serial.println("=================================");
     Serial.println("Sample DHT11...");
     lcd.setCursor(0, 1);
