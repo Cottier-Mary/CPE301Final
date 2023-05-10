@@ -9,6 +9,12 @@
 #define RDA 0x80
 #define TBE 0x20
 
+
+//Pointers for start/stop buttons
+volatile unsigned char* port_c = (unsigned char*) 0x28;
+volatile unsigned char* ddr_c  = (unsigned char*) 0x27;
+volatile unsigned char* pin_c  = (unsigned char*) 0x26;
+
 //Pointers for UART
 volatile unsigned char *myUCSR0A = (unsigned char *)0x00C0;
 volatile unsigned char *myUCSR0B = (unsigned char *)0x00C1;
@@ -27,15 +33,17 @@ const int Enable12 = 5;//PWM pin to L293D's EN12 (pin 1)
 const int Driver1A = 4;//To L293D's 1A (pin 2)
 const int Driver2A = 3;//To L293D's 2A (pin 7)
 
-//start/stop button code
+//start/stop and reset button code - 
+//Pointers for LEDs
 volatile unsigned char *port_b = (unsigned char *)0x25;
 volatile unsigned char *ddr_b  = (unsigned char *)0x24;
 volatile unsigned char *pin_b  = (unsigned char *)0x23;
 
 //reset button code
-volatile unsigned char *port_e = (unsigned char *)0x2E;
-volatile unsigned char *ddr_e = (unsigned char *)0x2D;
-volatile unsigned char *pin_e  = (unsigned char *)0x2C;
+
+//volatile unsigned char *port_e = (unsigned char *)0x2E;
+//volatile unsigned char *ddr_e = (unsigned char *)0x2D;
+//volatile unsigned char *pin_e  = (unsigned char *)0x2C;
 
 //LED's
 volatile unsigned char *port_l = (unsigned char *)0x10B;
@@ -51,8 +59,11 @@ volatile unsigned char* pin_g  = (unsigned char*) 0x32;
 #define fanOn 0x20
 #define fanOff 0x00
 
-bool start_button = false;
+int start_button_presses = 0;
 bool reset_button = false;
+bool start_button = false;
+//bool stop = false
+
 int tempThresholdRToI = 24; //running to idle
 int tempThresholdIToR = 22; //idle to running
 
@@ -101,13 +112,15 @@ void setup() {
   adc_init();
 
   stepMotor.setSpeed(300);
-
+  
   //set PB4 to INPUT
   *ddr_b &= 0xEF;
-  *ddr_e &=0x08;
+//  *ddr_e &=0x08;
   // enable the pullup resistor on PB4
-  *port_b |= 0x06;
-  *port_e |= 0x08;
+  //*port_b |= 0x06;
+  //*port_e |= 0x08;
+  //^not needed
+  
 
   //---set pin direction for DC motor/fan
   //pinMode(Enable12,OUTPUT);
@@ -116,6 +129,11 @@ void setup() {
   
   *port_l &= 0b11110000; // set leds to be off by default
   *port_l |= 0b00000001; // set except yellow :)
+
+  //set PC4/5 to INPUT
+ *ddr_c &= 0b11001111;
+ // enable the pullup resistor on PB4/5
+ *port_c |= 0b00110000;
   
   *myEICRA |= 0b10100000; // falling edge mode for interrupt 2/3
   *myEICRA &= 0b10101111; // falling edge mode for interrupt 2/3
@@ -148,21 +166,46 @@ void loop(){
     Serial.print("STATE IS ");
   Serial.println(state);
 
-   int a = 0;
 
-  if(*pin_e & 0x08){
-    state = 1;
-  }
-  if(*pin_b & 0x06){
-    a++;
-    if(a%2 == 0){
-      start_button = false; 
+
+
+ *pin_c & 0b11011111;
+ // if the pin is high
+   if(!(*pin_c & 0b00100000))
+ {
+  
+   Serial.println("RESET BUTTON WAS PRESSED");
+   state = 1;
+ }
+
+ if(!(*pin_c & 0b00010000))
+ {
+  //add interrupt??
+   Serial.println("START/STOP WAS PRESSED");
+   start_button_presses++;
+   if(start_button_presses % 2 == 0){
+      start_button = false;
     }
-    if(a%2 == 1){
+   if (start_button_presses % 2 == 1){
       start_button = true;
     }
-  }
-  
+ }
+
+
+// 
+//  if(*pin_b & 0x08){
+//    state = 1;
+//  }
+//  if(*pin_b & 0x06){
+//    a++;
+//    if(a%2 == 0){
+//      start_button = false; 
+//    }
+//    if(a%2 == 1){
+//      start_button = true;
+//    }
+//  }
+//  
   if(state != 3){
     potentiometerVal = map(adc_read(6),0,1024,0,500);
     if(potentiometerVal != Pval){
@@ -199,6 +242,7 @@ void loop(){
 
   if((start_button == true && state == 0) || (reset_button == true && state == 3) || (temperature <= tempThresholdRToI && state == 2)){// if temp is low and state is enabled
     state = 1; // set state to idle
+    reset_button = false;
   }
   
   //state switches
